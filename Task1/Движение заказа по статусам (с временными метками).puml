@@ -1,0 +1,63 @@
+@startuml
+title Движение заказа по статусам (с временными метками)
+
+skinparam sequenceMessageAlign center
+
+actor "Пользователь" as User
+participant "Онлайн-магазин" as Store
+participant "RabbitMQ" as MQ
+participant "CRM" as CRM
+participant "MES" as MES
+
+User -> Store: Создание заказа/3D-модели
+activate Store
+Store -> Store: INITIATED
+Store -> Store: FILE_UPLOADED
+User -> Store: Нажатие "Сделать заказ"
+Store -> Store: SUBMITTED
+deactivate Store
+
+Store -> MQ: Отправка заказа на расчёт
+activate MQ
+MQ -> MES: Передача заказа
+deactivate MQ
+activate MES
+MES -> MES: PRICE_CALCULATED
+note right of MES
+  ⏱️ <b>2-30 минут</b>
+  (2-3 мин в среднем,
+   до 30 мин для сложных)
+end note
+MES -> MQ: Цена рассчитана
+deactivate MES
+
+activate MQ
+MQ -> CRM: Передача цены
+deactivate MQ
+activate CRM
+CRM -> CRM: MANUFACTURING_APPROVED
+note right of CRM
+  ⏱️ <b>Неизвестно</b>
+  (подтверждение заказа)
+end note
+CRM -> MQ: Подтверждение в производство
+deactivate CRM
+
+activate MQ
+MQ -> MES: Команда на старт
+deactivate MQ
+activate MES
+MES -> MES: MANUFACTURING_STARTED
+note right of MES
+  ⏱️ <b>Неизвестно</b>
+  (оператор берёт заказ)
+end note
+MES -> MES: MANUFACTURING_COMPLETED
+MES -> MES: PACKAGING
+MES -> MES: SHIPPED
+deactivate MES
+activate CRM
+CRM -> CRM: CLOSED
+deactivate CRM
+
+@enduml

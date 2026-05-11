@@ -1,0 +1,32 @@
+@startuml
+title Диаграмма статусов заказа с временными метками
+
+|Онлайн-магазин|
+start
+:INITIATED;
+:FILE_UPLOADED;
+:SUBMITTED;
+|MES|
+:PRICE_CALCULATED;
+note right
+  <b>⏱️ 2-30 минут</b>
+  (2-3 мин в среднем,
+   до 30 мин для сложных)
+end note
+|CRM|
+:MANUFACTURING_APPROVED;
+|MES|
+:MANUFACTURING_STARTED;
+:MANUFACTURING_COMPLETED;
+|MES|
+note right
+  <b>⏱️ Неизвестно</b>
+  (время изготовления)
+end note
+:PACKAGING;
+:SHIPPED;
+|CRM|
+:CLOSED;
+stop
+
+@enduml
