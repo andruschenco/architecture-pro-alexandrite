@@ -1,0 +1,83 @@
+@startuml
+!include <C4/C4_Container>
+!include <C4/C4_Context>
+
+title Диаграмма контейнеров «Александрит» – трейсинг (красный) + мониторинг (зелёный)
+
+AddElementTag("tracing", $bgColor="#E63946", $fontColor="#FFFFFF", $borderColor="#E63946")
+AddElementTag("monitoring", $bgColor="#2E8B57", $fontColor="#FFFFFF", $borderColor="#2E8B57")
+
+' ------ ПЕРСОНЫ ------
+Person(customer, "Customer", "Клиент онлайн‑магазина")
+Person(seller, "Seller", "Продавец, подтверждает производство")
+Person(api_user, "API user", "Внешний партнёр (через API)")
+Person(operator, "Operator", "Оператор производства")
+Person(admin, "Admin/DevOps", "Администратор, разработчик, поддержка")
+
+' ------ БИЗНЕС-КОНТЕЙНЕРЫ  ------
+Container(shop, "Internet Shop", "Vue, TypeScript, Three.js", "Оформление заказа, загрузка 3D‑модели")
+Container(cms_api, "CMS API", "SpringBoot", "Список товаров, приём 3D‑файлов, сохранение заказов")
+Container(crm, "CRM", "Vue, TypeScript", "Управление заказами продавцами")
+Container(crmpi, "CRMPI", "SpringBoot", "API для CRM (бэкенд)")
+Container(mes_api, "MES API", "C#", "Назначение операторов, список заказов, расчёт стоимости")
+Container(queue, "Messages Queue", "RabbitMQ", "Обмен сообщениями (заказы, статусы)")
+Container(storage, "3d files storage", "S3‑based storage", "Хранение 3D‑моделей")
+ContainerDb(mes_db, "MES db", "PostgreSQL", "Данные заказов, операторов, статусов")
+
+' ------ КОМПОНЕНТЫ ТРЕЙСИНГА (КРАСНЫЕ) ------
+Container(otel_collector, "OpenTelemetry Collector", "gRPC/HTTP", "Сбор и экспорт трейсов", $tags="tracing")
+Container(jaeger_collector, "Jaeger Collector", "gRPC", "Приём трейсов", $tags="tracing")
+Container(jaeger_query, "Jaeger Query", "HTTP", "API и UI для трейсов", $tags="tracing")
+ContainerDb(jaeger_storage, "Elasticsearch", "Storage", "Хранилище трейсов", $tags="tracing")
+Container(jaeger_ui, "Jaeger UI", "HTTP", "Дашборд трейсинга", $tags="tracing")
+
+' ------ КОМПОНЕНТЫ АВТОМАТИЧЕСКОГО МОНИТОРИНГА (ЗЕЛЁНЫЕ) ------
+Container(prometheus, "Prometheus", "Time-series DB", "Сбор метрик, в т.ч. из трейсов", $tags="monitoring")
+Container(alertmanager, "Alertmanager", "Alerting", "Обработка и отправка алертов", $tags="monitoring")
+Container(grafana, "Grafana", "Visualization", "Дашборды метрик и трейсов", $tags="monitoring")
+Container(custom_exporter, "Custom Exporter (Python)", "Job/Service", "Вычисление метрик времени жизни заказа из трейсов", $tags="monitoring")
+
+' ------ СВЯЗИ БИЗНЕС-КОНТЕЙНЕРОВ  ------
+Rel(customer, shop, "Просмотр, заказ, загрузка модели", "HTTPS")
+Rel(shop, cms_api, "API вызовы", "REST")
+Rel(shop, storage, "Загрузка файлов", "S3")
+Rel(cms_api, storage, "Чтение/запись", "S3")
+Rel(cms_api, queue, "Отправка нового заказа", "AMQP")
+Rel(queue, mes_api, "Получение заказа", "AMQP")
+Rel(mes_api, queue, "Обновления статусов", "AMQP")
+Rel(mes_api, mes_db, "Чтение/запись", "JDBC")
+Rel(seller, crm, "Работа с заказами", "HTTPS")
+Rel(crm, crmpi, "API вызовы", "REST")
+Rel(crmpi, queue, "Подтверждение, запросы", "AMQP")
+Rel(crmpi, mes_api, "Прямые вызовы (синхронные)", "REST")
+Rel(api_user, mes_api, "Расчёт стоимости", "REST (API)")
+Rel(operator, mes_api, "Взять заказ, изменить статус", "HTTPS")
+
+' ------ СВЯЗИ ТРЕЙСИНГА ------
+Rel(shop, otel_collector, "Экспорт трейсов", "gRPC/HTTP")
+Rel(cms_api, otel_collector, "Экспорт трейсов", "gRPC/HTTP")
+Rel(crm, otel_collector, "Экспорт трейсов", "gRPC/HTTP")
+Rel(crmpi, otel_collector, "Экспорт трейсов", "gRPC/HTTP")
+Rel(mes_api, otel_collector, "Экспорт трейсов", "gRPC/HTTP")
+Rel(otel_collector, jaeger_collector, "Отправка трейсов", "gRPC")
+Rel(jaeger_collector, jaeger_storage, "Запись", "gRPC")
+Rel(jaeger_query, jaeger_storage, "Чтение", "gRPC")
+Rel(jaeger_ui, jaeger_query, "Запросы", "HTTP")
+Rel(admin, jaeger_ui, "Просмотр трейсов", "HTTPS")
+
+' ------ СВЯЗИ МОНИТОРИНГА ------
+Rel(custom_exporter, jaeger_query, "Запрос трейсов", "HTTP API")
+Rel(prometheus, custom_exporter, "Pull метрик (время жизни заказов)", "HTTP")
+Rel(prometheus, otel_collector, "Pull метрик (опционально)", "HTTP")
+Rel(prometheus, alertmanager, "Отправка алертов", "HTTP")
+Rel(grafana, prometheus, "Источник данных", "HTTP")
+Rel(admin, grafana, "Просмотр метрик", "HTTPS")
+Rel(admin, alertmanager, "Настройка алертов", "HTTPS")
+
+Legend right
+  | <#E63946> Красный </#E63946> | Трейсинг (Jaeger, OpenTelemetry) |
+  | <#2E8B57> Зелёный </#2E8B57> | Мониторинг и алертинг |
+  | <#blue> Синий </#blue> | Бизнес-контейнеры |
+Endlegend
+
+@enduml

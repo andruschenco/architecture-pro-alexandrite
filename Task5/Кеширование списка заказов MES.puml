@@ -1,0 +1,34 @@
+@startuml
+title Кеширование списка заказов MES
+
+actor "Оператор" as Operator
+participant "MES API" as MES
+participant "Redis Cache" as Cache
+participant "PostgreSQL" as DB
+
+== Чтение списка заказов ==
+Operator -> MES: GET /orders?status=manufacturing
+activate MES
+MES -> Cache: GET orders:list:status=manufacturing
+alt cache hit
+    Cache --> MES: закешированный список
+    MES --> Operator: JSON (быстро)
+else cache miss
+    Cache --> MES: null
+    MES -> DB: SELECT * FROM orders WHERE status='manufacturing'
+    DB --> MES: список заказов
+    MES -> Cache: SET orders:list:status=manufacturing, TTL=60s
+    MES --> Operator: JSON
+end
+deactivate MES
+
+== Запись – изменение статуса заказа ==
+Operator -> MES: PUT /orders/12345/status?to=manufacturing_started
+activate MES
+MES -> DB: UPDATE orders SET status='manufacturing_started' WHERE id=12345
+MES -> Cache: DEL orders:list:* (инвалидация всех кешированных списков)
+MES -> Cache: DEL orders:details:12345
+MES --> Operator: 200 OK
+deactivate MES
+
+@enduml
